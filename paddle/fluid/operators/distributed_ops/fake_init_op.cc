@@ -1,11 +1,8 @@
 /* Copyright (c) 2018 PaddlePaddle Authors. All Rights Reserved.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -22,8 +19,7 @@ namespace operators {
 class FakeInitInferShape : public framework::InferShapeBase {
  public:
   void operator()(framework::InferShapeContext *ctx) const override {
-    PADDLE_ENFORCE(ctx->HasOutput("Out"),
-                   "Output(Out) of FakeInitOp should not be null.");
+    OP_INOUT_CHECK(ctx->HasOutput("Out"), "Output", "Out", "FakeInit");
     auto &shape = ctx->Attrs().Get<std::vector<int64_t>>("shape");
     ctx->SetOutputDim("Out", framework::make_ddim(shape));
   }
@@ -69,10 +65,8 @@ class FakeInitOpMaker : public framework::OpProtoAndCheckerMaker {
               "with the specified value");
     AddComment(R"DOC(
 FakeInit Operator.
-
 Init an variable but not alloc memory for it, it is used for init the
 table parameter at trainer side in distributed lookup table.
-
 )DOC");
   }
 };
@@ -80,6 +74,8 @@ table parameter at trainer side in distributed lookup table.
 }  // namespace paddle
 
 namespace ops = paddle::operators;
-REGISTER_OPERATOR(fake_init, ops::FakeInitOp, ops::FakeInitInferShape,
-                  ops::FakeInitOpMaker, paddle::framework::EmptyGradOpMaker,
-                  ops::FakeInitOpVarTypeInference);
+REGISTER_OPERATOR(
+    fake_init, ops::FakeInitOp, ops::FakeInitInferShape, ops::FakeInitOpMaker,
+    paddle::framework::EmptyGradOpMaker<paddle::framework::OpDesc>,
+    paddle::framework::EmptyGradOpMaker<paddle::imperative::OpBase>,
+    ops::FakeInitOpVarTypeInference);

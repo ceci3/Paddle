@@ -71,7 +71,9 @@ static void FlParallelExecuteBlocks(
                 << "pointer: " << prepared[run_block].get();
         executor->RunPreparedContext(prepared[run_block].get(), scope);
       } catch (const std::exception &e) {
-        LOG(FATAL) << "run sub program:" << idx << " error " << e.what();
+        PADDLE_THROW(platform::errors::Fatal(
+            "Run %d-th sub program failed. The exception is:\n%s.", idx,
+            e.what()));
       }
     }));
   }
@@ -199,9 +201,9 @@ void FlListenAndServOp::RunImpl(const framework::Scope &scope,
   rpc_service_.reset(new RPCSERVER_T(endpoint, fan_in));
 
   request_send_handler_.reset(
-      new distributed::RequestSendHandler(sync_mode, false));
+      new distributed::RequestSendHandler(!sync_mode, false));
   request_get_handler_.reset(
-      new distributed::RequestGetHandler(sync_mode, false));
+      new distributed::RequestGetHandler(!sync_mode, false));
 
   rpc_service_->RegisterRPC(distributed::kRequestSend,
                             request_send_handler_.get(),

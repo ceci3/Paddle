@@ -15,6 +15,8 @@
 import paddle.fluid as fluid
 import paddle.fluid.framework as framework
 import unittest
+import inspect
+
 from test_imperative_base import new_program_scope
 
 
@@ -30,7 +32,7 @@ class TestTracerMode(unittest.TestCase):
         self.assertEqual(self.tracer._train_mode, False)
         return a
 
-    @fluid.dygraph.base._not_support
+    @framework.dygraph_not_support
     def not_support_func(self):
         return True
 
@@ -48,6 +50,15 @@ class TestTracerMode(unittest.TestCase):
             self.tracer._train_mode = self.init_mode
 
             self.assertEqual(self.no_grad_func(1), 1)
+            self.assertEqual(self.no_grad_func.__name__, "no_grad_func")
+
+            def need_no_grad_func(a, b=1):
+                return a + b
+
+            decorated_func = fluid.dygraph.no_grad(need_no_grad_func)
+            self.assertTrue(
+                str(inspect.getargspec(decorated_func)) ==
+                str(inspect.getargspec(need_no_grad_func)))
 
             self.assertEqual(self.tracer._train_mode, self.init_mode)
 

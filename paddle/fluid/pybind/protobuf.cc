@@ -22,6 +22,7 @@ limitations under the License. */
 #include "paddle/fluid/framework/op_desc.h"
 #include "paddle/fluid/framework/program_desc.h"
 #include "paddle/fluid/framework/var_desc.h"
+#include "paddle/fluid/framework/version.h"
 
 #include "paddle/fluid/pybind/pybind_boost_headers.h"
 
@@ -35,8 +36,9 @@ static pybind11::bytes SerializeMessage(
     T &self) {  // NOLINT due to pybind11 convention.
   // Check IsInitialized in Python
   std::string retv;
-  PADDLE_ENFORCE(self.Proto()->SerializePartialToString(&retv),
-                 "Cannot serialize message");
+  PADDLE_ENFORCE_EQ(self.Proto()->SerializePartialToString(&retv), true,
+                    platform::errors::InvalidArgument(
+                        "Failed to serialize input Desc to string."));
   return retv;
 }
 
@@ -65,13 +67,18 @@ void BindProgramDesc(pybind11::module *m) {
       .def("parse_from_string",
            [](pd::ProgramDesc &program_desc, const std::string &data) {
              pd::proto::ProgramDesc *desc = program_desc.Proto();
-             PADDLE_ENFORCE(desc->ParseFromString(data),
-                            "Fail to parse ProgramDesc from string. This could "
-                            "be a bug of Paddle.");
+             PADDLE_ENFORCE_EQ(
+                 desc->ParseFromString(data), true,
+                 platform::errors::InvalidArgument(
+                     "Failed to parse ProgramDesc from binary string."));
            })
-      .def("_version", [](pd::ProgramDesc &self) -> int64_t {
-        return self.Proto()->version().version();
-      });
+      .def("_set_version",
+           [](pd::ProgramDesc &self, int64_t version) {
+             return self.SetVersion(version);
+           },
+           pybind11::arg("version") = pd::kCurProgramVersion)
+      .def("_version",
+           [](pd::ProgramDesc &self) -> int64_t { return self.Version(); });
 }
 
 void BindBlockDesc(pybind11::module *m) {
@@ -143,6 +150,7 @@ void BindVarDsec(pybind11::module *m) {
       .def("set_name", &pd::VarDesc::SetName)
       .def("set_shape", &pd::VarDesc::SetShape)
       .def("set_shapes", &pd::VarDesc::SetShapes)
+      .def("get_shape", &pd::VarDesc::GetShape)
       .def("set_dtype", &pd::VarDesc::SetDataType)
       .def("set_dtypes", &pd::VarDesc::SetDataTypes)
       .def("shape", &pd::VarDesc::GetShape,
@@ -214,8 +222,16 @@ void BindOpDesc(pybind11::module *m) {
       .def("input_names", &pd::OpDesc::InputNames)
       .def("output", &pd::OpDesc::Output)
       .def("output_names", &pd::OpDesc::OutputNames)
-      .def("set_input", &pd::OpDesc::SetInput)
-      .def("set_output", &pd::OpDesc::SetOutput)
+      .def("set_input",
+           [](pd::OpDesc &self, const std::string &name,
+              const std::vector<std::string> &vec_var_name) {
+             self.SetInput(name, vec_var_name);
+           })
+      .def("set_output",
+           [](pd::OpDesc &self, const std::string &name,
+              const std::vector<std::string> &vec_var_name) {
+             self.SetOutput(name, vec_var_name);
+           })
       .def("input_arg_names", &pd::OpDesc::InputArgumentNames)
       .def("output_arg_names", &pd::OpDesc::OutputArgumentNames)
       .def("_rename_input", &pd::OpDesc::RenameInput)
@@ -242,7 +258,9 @@ void BindOpDesc(pybind11::module *m) {
       .def("set_is_target", &pd::OpDesc::SetIsTarget)
       .def("serialize_to_string", SerializeMessage<pd::OpDesc>)
       .def("block", [](pd::OpDesc &self) { return self.Block(); },
-           pybind11::return_value_policy::reference);
+           pybind11::return_value_policy::reference)
+      .def("inputs", &pd::OpDesc::Inputs)
+      .def("outputs", &pd::OpDesc::Outputs);
 }
 
 }  // namespace pybind

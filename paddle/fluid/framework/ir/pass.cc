@@ -18,6 +18,7 @@ limitations under the License. */
 #include <utility>
 
 #include "paddle/fluid/framework/ir/graph_helper.h"
+#include "paddle/fluid/platform/device_context.h"
 
 namespace paddle {
 namespace framework {
@@ -27,12 +28,15 @@ Graph* Pass::Apply(Graph* graph) const {
   CheckPrevPass();
   PADDLE_ENFORCE(graph, "graph passed to Pass::Apply() cannot be empty.");
   for (const std::string& attr : required_pass_attrs_) {
-    PADDLE_ENFORCE(attrs_.find(attr) != attrs_.end(),
-                   "Required pass atrribute %s not set.", attr);
+    PADDLE_ENFORCE_NE(
+        attrs_.find(attr), attrs_.end(),
+        platform::errors::InvalidArgument(
+            "Required atrribute %s for pass < %s > is not set.", attr, Type()));
   }
   for (const std::string& attr : required_graph_attrs_) {
-    PADDLE_ENFORCE(graph->Has(attr), "Required graph atrribute %s not set.",
-                   attr);
+    PADDLE_ENFORCE_EQ(graph->Has(attr), true,
+                      platform::errors::InvalidArgument(
+                          "Required atrribute %s for graph is not set.", attr));
   }
   ApplyImpl(graph);
   // TODO(panyx0718): Add more verifications.
@@ -46,6 +50,14 @@ Graph* Pass::Apply(Graph* graph) const {
     graph->Set<PassRecorder>(kPassRecorder, new PassRecorder);
   }
   graph->Get<PassRecorder>(kPassRecorder).insert(Type());
+#ifdef PADDLE_WITH_MKLDNN
+  // Clear mkl-dnn cache,
+  // Passes can change params, tensors, so caching need to be discarded
+  platform::DeviceContextPool& pool = platform::DeviceContextPool::Instance();
+  platform::MKLDNNDeviceContext* dev_ctx =
+      (platform::MKLDNNDeviceContext*)pool.Get(paddle::platform::CPUPlace());
+  dev_ctx->ResetBlobMap();
+#endif
   return graph;
 }
 

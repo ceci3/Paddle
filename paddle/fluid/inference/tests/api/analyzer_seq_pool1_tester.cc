@@ -72,7 +72,7 @@ struct DataRecord {
                         "size of each slot should be equal");
     }
     size_t num_batches = num_samples / bs;
-    EXPECT_GT(num_batches, 0);
+    EXPECT_GT(num_batches, 0UL);
     batched_data.resize(num_batches);
     for (auto &one_batch : batched_data) {
       one_batch.resize(datasets.size());
@@ -143,7 +143,7 @@ void SetConfig(AnalysisConfig *cfg, bool use_mkldnn = false) {
   cfg->DisableGpu();
   cfg->SwitchSpecifyInputNames();
   cfg->SwitchIrDebug();
-  cfg->SetCpuMathLibraryNumThreads(FLAGS_paddle_num_threads);
+  cfg->SetCpuMathLibraryNumThreads(FLAGS_cpu_num_threads);
   if (FLAGS_zero_copy) {
     cfg->SwitchUseFeedFetchOps(false);
   }

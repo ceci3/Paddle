@@ -32,6 +32,18 @@ void Copy<platform::CPUPlace, platform::CPUPlace>(platform::CPUPlace, void* dst,
 #ifdef PADDLE_WITH_CUDA
 static constexpr size_t kMaxGpuAsyncCopyBytes = 64 * 1024;  // 64K
 
+inline void SyncCUDAStream() {
+#if !defined(_WIN32)
+  cudaStreamSynchronize(0);
+#else
+  cudaError_t e_sync = cudaSuccess;
+  while (e_sync = cudaStreamQuery(0)) {
+    if (e_sync == cudaErrorNotReady) continue;
+    break;
+  }
+#endif
+}
+
 // NOTE(zcd): Do not use GpuMemcpySync as much as possible.
 // because GpuMemcpySync issues the copying command to the default stream,
 // which will make two commands from different streams cannot run concurrently.
@@ -43,8 +55,10 @@ void Copy<platform::CPUPlace, platform::CUDAPlace>(
     platform::CPUPlace dst_place, void* dst, platform::CUDAPlace src_place,
     const void* src, size_t num, cudaStream_t stream) {
   if (UNLIKELY(num == 0)) return;
-  platform::SetDeviceId(src_place.device);
 
+  platform::SetDeviceId(src_place.device);
+  VLOG(4) << "memory::Copy " << num << " Bytes from " << src_place << " to "
+          << dst_place << " by thream(" << stream << ")";
   if (stream) {
     platform::RecordEvent record_event("GpuMemcpyAsync:GPU->CPU");
     platform::GpuMemcpyAsync(dst, src, num, cudaMemcpyDeviceToHost, stream);
@@ -53,7 +67,7 @@ void Copy<platform::CPUPlace, platform::CUDAPlace>(
     platform::GpuMemcpySync(dst, src, num, cudaMemcpyDeviceToHost);
     // FIXME(zjl): do we really need it?
     if (num <= kMaxGpuAsyncCopyBytes) {
-      cudaStreamSynchronize(0);
+      SyncCUDAStream();
     }
   }
 }
@@ -65,6 +79,8 @@ void Copy<platform::CUDAPlace, platform::CPUPlace>(
   if (UNLIKELY(num == 0)) return;
 
   platform::SetDeviceId(dst_place.device);
+  VLOG(4) << "memory::Copy " << num << " Bytes from " << src_place << " to "
+          << dst_place << " by thream(" << stream << ")";
   if (stream) {
     platform::RecordEvent record_event("GpuMemcpyAsync:CPU->GPU");
     platform::GpuMemcpyAsync(dst, src, num, cudaMemcpyHostToDevice, stream);
@@ -73,7 +89,7 @@ void Copy<platform::CUDAPlace, platform::CPUPlace>(
     platform::GpuMemcpySync(dst, src, num, cudaMemcpyHostToDevice);
     // FIXME(zjl): do we really need it?
     if (num <= kMaxGpuAsyncCopyBytes) {
-      cudaStreamSynchronize(0);
+      SyncCUDAStream();
     }
   }
 }

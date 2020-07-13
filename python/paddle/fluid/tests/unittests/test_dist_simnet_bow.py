@@ -18,6 +18,9 @@ import unittest
 
 from test_dist_base import TestDistBase
 
+import os
+flag_name = os.path.splitext(__file__)[0]
+
 
 class TestDistSimnetBowDense2x2(TestDistBase):
     def _setup_config(self):
@@ -34,7 +37,8 @@ class TestDistSimnetBowDense2x2(TestDistBase):
             "dist_simnet_bow.py",
             delta=1e-5,
             check_error_log=True,
-            need_envs=need_envs)
+            need_envs=need_envs,
+            log_name=flag_name)
 
 
 class TestDistSimnetBow2x2DenseAsync(TestDistBase):
@@ -42,7 +46,7 @@ class TestDistSimnetBow2x2DenseAsync(TestDistBase):
         self._sync_mode = False
         self._enforce_place = "CPU"
 
-    #FIXME(typhoonzero): fix async tests later
+    # FIXME(typhoonzero): fix async tests later
     def notest_simnet_bow(self):
         need_envs = {
             "IS_DISTRIBUTED": '0',
@@ -52,8 +56,9 @@ class TestDistSimnetBow2x2DenseAsync(TestDistBase):
         self.check_with_place(
             "dist_simnet_bow.py",
             delta=100,
-            check_error_log=False,
-            need_envs=need_envs)
+            check_error_log=True,
+            need_envs=need_envs,
+            log_name=flag_name)
 
 
 class TestDistSimnetBowSparse2x2(TestDistBase):
@@ -70,8 +75,9 @@ class TestDistSimnetBowSparse2x2(TestDistBase):
         self.check_with_place(
             "dist_simnet_bow.py",
             delta=1e-5,
-            check_error_log=False,
-            need_envs=need_envs)
+            check_error_log=True,
+            need_envs=need_envs,
+            log_name=flag_name)
 
 
 class TestDistSimnetBow2x2SparseAsync(TestDistBase):
@@ -88,8 +94,9 @@ class TestDistSimnetBow2x2SparseAsync(TestDistBase):
         self.check_with_place(
             "dist_simnet_bow.py",
             delta=100,
-            check_error_log=False,
-            need_envs=need_envs)
+            check_error_log=True,
+            need_envs=need_envs,
+            log_name=flag_name)
 
 
 # FIXME(tangwei): Learningrate variable is not created on pserver.
@@ -100,7 +107,7 @@ class TestDistSimnetBow2x2LookupTableSync(TestDistBase):
 
     def test_simnet_bow(self):
         need_envs = {
-            "IS_DISTRIBUTED": '1',
+            "IS_DISTRIBUTED": '0',
             "IS_SPARSE": '1',
             'IS_SELF_CONTAINED_LR': '1'
         }
@@ -108,7 +115,8 @@ class TestDistSimnetBow2x2LookupTableSync(TestDistBase):
             "dist_simnet_bow.py",
             delta=1e-5,
             check_error_log=True,
-            need_envs=need_envs)
+            need_envs=need_envs,
+            log_name=flag_name)
 
 
 class TestDistSimnetBow2x2LookupTableAsync(TestDistBase):
@@ -118,15 +126,16 @@ class TestDistSimnetBow2x2LookupTableAsync(TestDistBase):
 
     def test_simnet_bow(self):
         need_envs = {
-            "IS_DISTRIBUTED": '1',
+            "IS_DISTRIBUTED": '0',
             "IS_SPARSE": '1',
             'IS_SELF_CONTAINED_LR': '1'
         }
         self.check_with_place(
             "dist_simnet_bow.py",
             delta=100,
-            check_error_log=False,
-            need_envs=need_envs)
+            check_error_log=True,
+            need_envs=need_envs,
+            log_name=flag_name)
 
 
 class TestDistSimnetBow2x2LookupTableNotContainLRSync(TestDistBase):
@@ -136,15 +145,16 @@ class TestDistSimnetBow2x2LookupTableNotContainLRSync(TestDistBase):
 
     def test_simnet_bow(self):
         need_envs = {
-            "IS_DISTRIBUTED": '1',
+            "IS_DISTRIBUTED": '0',
             "IS_SPARSE": '1',
             'IS_SELF_CONTAINED_LR': '0'
         }
         self.check_with_place(
             "dist_simnet_bow.py",
             delta=1e-5,
-            check_error_log=False,
-            need_envs=need_envs)
+            check_error_log=True,
+            need_envs=need_envs,
+            log_name=flag_name)
 
 
 if __name__ == "__main__":

@@ -20,6 +20,8 @@ __all__ = ['DataFeedDesc']
 
 class DataFeedDesc(object):
     """
+    :api_attr: Static Graph
+    
     Datafeed descriptor, describing input training data format. This class is
     currently only used for AsyncExecutor (See comments for class AsyncExecutor
     for a brief introduction)
@@ -53,7 +55,7 @@ class DataFeedDesc(object):
       data_feed = fluid.DataFeedDesc('data.proto')
 
     However, users usually shouldn't care about the message format; instead,
-    they are encouragd to use :code:`Data Generator` as a tool to generate a
+    they are encouraged to use :code:`Data Generator` as a tool to generate a
     valid data description, in the process of converting their raw log files to
     training files acceptable to AsyncExecutor.
 
@@ -92,7 +94,7 @@ class DataFeedDesc(object):
 
     def set_batch_size(self, batch_size):
         """
-        Set batch size. Will be effective during training
+        Set :attr:`batch_size` in :ref:`api_fluid_DataFeedDesc` . :attr:`batch_size` can be changed during training.
 
         Example:
             .. code-block:: python
@@ -120,16 +122,20 @@ class DataFeedDesc(object):
               data_feed.set_batch_size(128)
 
         Args:
-            batch_size: batch size
+            batch_size (int): The number of batch size.
+
+        Returns:
+            None.
 
         """
         self.proto_desc.batch_size = batch_size
 
     def set_dense_slots(self, dense_slots_name):
         """
-        Set if a specific slot will be dense. Will be effective during training.
-        features for a dense slot will be fed into a Tensor, while those for a
-        sparse slot will be fed into a LoDTensor
+        Set slots in :attr:`dense_slots_name` as dense slots. **Note: In default, all slots are sparse slots.**
+ 
+        Features for a dense slot will be fed into a Tensor, while those for a
+        sparse slot will be fed into a LoDTensor.
 
         Example:
             .. code-block:: python
@@ -157,10 +163,11 @@ class DataFeedDesc(object):
               data_feed.set_dense_slots(['words'])
 
         Args:
-            dense_slots_name: a list of slot names which will be set dense
+            dense_slots_name (list(str)): a list of slot names which will be set dense.
 
-        Note:
-            Default is sparse for all slots
+        Returns:
+            None.
+
         """
         if self.proto_desc.name != "MultiSlotDataFeed":
             raise ValueError(

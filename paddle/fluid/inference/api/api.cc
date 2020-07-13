@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <sstream>
+#include "gflags/gflags.h"
 #include "paddle/fluid/framework/commit.h"
 #include "paddle/fluid/framework/lod_tensor.h"
 #include "paddle/fluid/framework/scope.h"
@@ -30,6 +31,8 @@ int PaddleDtypeSize(PaddleDType dtype) {
       return sizeof(int64_t);
     case PaddleDType::INT32:
       return sizeof(int32_t);
+    case PaddleDType::UINT8:
+      return sizeof(uint8_t);
     default:
       assert(false);
       return -1;
@@ -85,7 +88,7 @@ void PaddleBuf::Resize(size_t length) {
   if (length_ >= length) return;
   if (memory_owned_) {
     Free();
-    data_ = malloc(length);
+    data_ = new char[length];
     length_ = length;
     memory_owned_ = true;
   } else {
@@ -103,7 +106,7 @@ void PaddleBuf::Reset(void *data, size_t length) {
 void PaddleBuf::Free() {
   if (memory_owned_ && data_) {
     PADDLE_ENFORCE_GT(length_, 0UL);
-    free(static_cast<char *>(data_));
+    delete[] static_cast<char *>(data_);
     data_ = nullptr;
     length_ = 0;
   }
@@ -115,6 +118,21 @@ std::string get_version() {
   ss << "commit: " << framework::paddle_commit() << "\n";
   ss << "branch: " << framework::paddle_compile_branch() << "\n";
   return ss.str();
+}
+
+std::string UpdateDllFlag(const char *name, const char *value) {
+  std::string ret;
+  LOG(WARNING)
+      << "The function \"UpdateDllFlag\" is only used to update the flag "
+         "on the Windows shared library";
+  ret = google::SetCommandLineOption(name, value);
+
+  PADDLE_ENFORCE_EQ(
+      ret.empty(), false,
+      platform::errors::InvalidArgument(
+          "Fail to update flag: %s, please make sure the flag exists.", name));
+  LOG(INFO) << ret;
+  return ret;
 }
 
 }  // namespace paddle

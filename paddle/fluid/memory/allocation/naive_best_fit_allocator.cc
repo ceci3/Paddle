@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "paddle/fluid/memory/allocation/naive_best_fit_allocator.h"
+
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "glog/logging.h"
-#include "paddle/fluid/memory/allocation/naive_best_fit_allocator.h"
 #include "paddle/fluid/memory/detail/buddy_allocator.h"
 #include "paddle/fluid/memory/detail/system_allocator.h"
 #include "paddle/fluid/platform/gpu_info.h"
@@ -101,25 +102,42 @@ size_t Used<platform::CPUPlace>(const platform::CPUPlace &place) {
 }
 
 #ifdef PADDLE_WITH_CUDA
-BuddyAllocator *GetGPUBuddyAllocator(int gpu_id) {
-  static std::once_flag init_flag;
-  static detail::BuddyAllocator **a_arr = nullptr;
-  static std::vector<int> devices;
+class GPUBuddyAllocatorList {
+ private:
+  GPUBuddyAllocatorList() : devices_(platform::GetSelectedDevices()) {
+    auto gpu_num = devices_.size();
+    allocators_.resize(gpu_num);
+    init_flags_.reserve(gpu_num);
+    for (size_t i = 0; i < gpu_num; ++i) {
+      init_flags_.emplace_back(new std::once_flag());
+    }
+  }
 
-  std::call_once(init_flag, [gpu_id]() {
-    devices = platform::GetSelectedDevices();
-    int gpu_num = devices.size();
-    a_arr = new BuddyAllocator *[gpu_num];
+  static GPUBuddyAllocatorList *CreateNewInstance() {
+    return new GPUBuddyAllocatorList();
+  }
 
-    for (size_t i = 0; i < devices.size(); ++i) {
-      int dev_id = devices[i];
-      a_arr[i] = nullptr;
-      platform::SetDeviceId(dev_id);
-      a_arr[i] = new BuddyAllocator(std::unique_ptr<detail::SystemAllocator>(
-                                        new detail::GPUAllocator(dev_id)),
-                                    platform::GpuMinChunkSize(),
-                                    platform::GpuMaxChunkSize());
+ public:
+  static GPUBuddyAllocatorList *Instance() {
+    static auto *instance = CreateNewInstance();
+    return instance;
+  }
 
+  BuddyAllocator *Get(int gpu_id) {
+    auto pos = std::distance(
+        devices_.begin(), std::find(devices_.begin(), devices_.end(), gpu_id));
+    PADDLE_ENFORCE_LT(pos, devices_.size(),
+                      platform::errors::OutOfRange(
+                          "The index exceeds the size of devices, the size of "
+                          "devices is %d, the index is %d",
+                          devices_.size(), pos));
+
+    std::call_once(*init_flags_[pos], [this, pos] {
+      platform::SetDeviceId(devices_[pos]);
+      allocators_[pos].reset(new BuddyAllocator(
+          std::unique_ptr<detail::SystemAllocator>(
+              new detail::GPUAllocator(devices_[pos])),
+          platform::GpuMinChunkSize(), platform::GpuMaxChunkSize()));
       VLOG(10) << "\n\nNOTE:\n"
                << "You can set GFlags environment variable "
                << "'FLAGS_fraction_of_gpu_memory_to_use' "
@@ -132,13 +150,19 @@ BuddyAllocator *GetGPUBuddyAllocator(int gpu_id) {
                << FLAGS_initial_gpu_memory_in_mb
                << ". Current 'FLAGS_reallocate_gpu_memory_in_mb' value is "
                << FLAGS_reallocate_gpu_memory_in_mb << "\n\n";
-    }
-    platform::SetDeviceId(gpu_id);
-  });
+    });
 
-  auto pos = std::distance(devices.begin(),
-                           std::find(devices.begin(), devices.end(), gpu_id));
-  return a_arr[pos];
+    return allocators_[pos].get();
+  }
+
+ private:
+  std::vector<int> devices_;
+  std::vector<std::unique_ptr<std::once_flag>> init_flags_;
+  std::vector<std::unique_ptr<BuddyAllocator>> allocators_;
+};
+
+BuddyAllocator *GetGPUBuddyAllocator(int gpu_id) {
+  return GPUBuddyAllocatorList::Instance()->Get(gpu_id);
 }
 #endif
 
@@ -147,7 +171,8 @@ size_t Used<platform::CUDAPlace>(const platform::CUDAPlace &place) {
 #ifdef PADDLE_WITH_CUDA
   return GetGPUBuddyAllocator(place.device)->Used();
 #else
-  PADDLE_THROW("'CUDAPlace' is not supported in CPU only device.");
+  PADDLE_THROW(platform::errors::PermissionDenied(
+      "'CUDAPlace' is not supported in CPU only device."));
 #endif
 }
 
@@ -161,15 +186,14 @@ void *Alloc<platform::CUDAPlace>(const platform::CUDAPlace &place,
     platform::CUDADeviceGuard(place.device);
     size_t avail, total;
     platform::GpuMemoryUsage(&avail, &total);
-    LOG(FATAL) << "Cannot allocate " << string::HumanReadableSize(size)
-               << " in GPU " << place.device << ", available "
-               << string::HumanReadableSize(avail) << ", total "
-               << string::HumanReadableSize(total) << ", GpuMinChunkSize "
-               << string::HumanReadableSize(buddy_allocator->GetMinChunkSize())
-               << ", GpuMaxChunkSize "
-               << string::HumanReadableSize(buddy_allocator->GetMaxChunkSize())
-               << ", GPU memory used: "
-               << string::HumanReadableSize(Used<platform::CUDAPlace>(place));
+    PADDLE_THROW(platform::errors::ResourceExhausted(
+        "Cannot allocate %s in GPU %d, avaliable %s, total %s, GpuMinChunkSize "
+        "%s, GpuMaxChunkSize %s, GPU memory used: %s.",
+        string::HumanReadableSize(size), place.device,
+        string::HumanReadableSize(avail), string::HumanReadableSize(total),
+        string::HumanReadableSize(buddy_allocator->GetMinChunkSize()),
+        string::HumanReadableSize(buddy_allocator->GetMaxChunkSize()),
+        string::HumanReadableSize(Used<platform::CUDAPlace>(place))));
   } else {
     if (FLAGS_init_allocated_mem) {
       cudaMemset(ptr, 0xEF, size);
@@ -177,7 +201,8 @@ void *Alloc<platform::CUDAPlace>(const platform::CUDAPlace &place,
   }
   return ptr;
 #else
-  PADDLE_THROW("'CUDAPlace' is not supported in CPU only device.");
+  PADDLE_THROW(platform::errors::PermissionDenied(
+      "'CUDAPlace' is not supported in CPU only device."));
 #endif
 }
 
@@ -187,7 +212,8 @@ void Free<platform::CUDAPlace>(const platform::CUDAPlace &place, void *p,
 #ifdef PADDLE_WITH_CUDA
   GetGPUBuddyAllocator(place.device)->Free(p);
 #else
-  PADDLE_THROW("'CUDAPlace' is not supported in CPU only device.");
+  PADDLE_THROW(platform::errors::PermissionDenied(
+      "'CUDAPlace' is not supported in CPU only device."));
 #endif
 }
 
@@ -212,7 +238,8 @@ size_t Used<platform::CUDAPinnedPlace>(const platform::CUDAPinnedPlace &place) {
 #ifdef PADDLE_WITH_CUDA
   return GetCUDAPinnedBuddyAllocator()->Used();
 #else
-  PADDLE_THROW("'CUDAPinnedPlace' is not supported in CPU only device.");
+  PADDLE_THROW(platform::errors::PermissionDenied(
+      "'CUDAPinnedPlace' is not supported in CPU only device."));
 #endif
 }
 
@@ -232,7 +259,8 @@ void *Alloc<platform::CUDAPinnedPlace>(const platform::CUDAPinnedPlace &place,
   }
   return ptr;
 #else
-  PADDLE_THROW("'CUDAPinnedPlace' is not supported in CPU only device.");
+  PADDLE_THROW(platform::errors::PermissionDenied(
+      "'CUDAPinnedPlace' is not supported in CPU only device."));
 #endif
 }
 
@@ -242,7 +270,8 @@ void Free<platform::CUDAPinnedPlace>(const platform::CUDAPinnedPlace &place,
 #ifdef PADDLE_WITH_CUDA
   GetCUDAPinnedBuddyAllocator()->Free(p);
 #else
-  PADDLE_THROW("'CUDAPinnedPlace' is not supported in CPU only device.");
+  PADDLE_THROW(platform::errors::PermissionDenied(
+      "'CUDAPinnedPlace' is not supported in CPU only device."));
 #endif
 }
 
@@ -280,7 +309,8 @@ size_t Usage::operator()(const platform::CUDAPlace &gpu) const {
 #ifdef PADDLE_WITH_CUDA
   return Used(gpu);
 #else
-  PADDLE_THROW("'CUDAPlace' is not supported in CPU only device.");
+  PADDLE_THROW(platform::errors::PermissionDenied(
+      "'CUDAPlace' is not supported in CPU only device."));
 #endif
 }
 
@@ -288,7 +318,8 @@ size_t Usage::operator()(const platform::CUDAPinnedPlace &cuda_pinned) const {
 #ifdef PADDLE_WITH_CUDA
   return Used(cuda_pinned);
 #else
-  PADDLE_THROW("'CUDAPinnedPlace' is not supported in CPU only device.");
+  PADDLE_THROW(platform::errors::PermissionDenied(
+      "'CUDAPinnedPlace' is not supported in CPU only device."));
 #endif
 }
 }  // namespace legacy

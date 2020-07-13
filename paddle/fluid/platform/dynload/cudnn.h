@@ -28,8 +28,6 @@ extern std::once_flag cudnn_dso_flag;
 extern void* cudnn_dso_handle;
 extern bool HasCUDNN();
 
-#ifdef PADDLE_USE_DSO
-
 extern void EnforceCUDNNLoaded(const char* fn_name);
 #define DECLARE_DYNAMIC_LOAD_CUDNN_WRAP(__name)                            \
   struct DynLoad__##__name {                                               \
@@ -45,19 +43,6 @@ extern void EnforceCUDNNLoaded(const char* fn_name);
     }                                                                      \
   };                                                                       \
   extern struct DynLoad__##__name __name
-
-#else
-
-#define DECLARE_DYNAMIC_LOAD_CUDNN_WRAP(__name) \
-  struct DynLoad__##__name {                    \
-    template <typename... Args>                 \
-    inline auto operator()(Args... args) {      \
-      return ::__name(args...);                 \
-    }                                           \
-  };                                            \
-  extern DynLoad__##__name __name
-
-#endif
 
 /**
  * include all needed cudnn functions in HPPL
@@ -126,7 +111,8 @@ extern void EnforceCUDNNLoaded(const char* fn_name);
   __macro(cudnnRNNBackwardWeights);                       \
   __macro(cudnnRNNForwardInference);                      \
   __macro(cudnnDestroyDropoutDescriptor);                 \
-  __macro(cudnnDestroyRNNDescriptor);
+  __macro(cudnnDestroyRNNDescriptor);                     \
+  __macro(cudnnSetTensorNdDescriptorEx);
 
 CUDNN_DNN_ROUTINE_EACH(DECLARE_DYNAMIC_LOAD_CUDNN_WRAP)
 
@@ -188,6 +174,15 @@ CUDNN_DNN_ROUTINE_EACH_R6(DECLARE_DYNAMIC_LOAD_CUDNN_WRAP)
 CUDNN_DNN_ROUTINE_EACH_R7(DECLARE_DYNAMIC_LOAD_CUDNN_WRAP)
 #endif
 
+#if CUDNN_VERSION >= 7401
+#define CUDNN_DNN_ROUTINE_EACH_AFTER_R7(__macro)                     \
+  __macro(cudnnGetBatchNormalizationForwardTrainingExWorkspaceSize); \
+  __macro(cudnnBatchNormalizationForwardTrainingEx);                 \
+  __macro(cudnnGetBatchNormalizationBackwardExWorkspaceSize);        \
+  __macro(cudnnBatchNormalizationBackwardEx);                        \
+  __macro(cudnnGetBatchNormalizationTrainingExReserveSpaceSize);
+CUDNN_DNN_ROUTINE_EACH_AFTER_R7(DECLARE_DYNAMIC_LOAD_CUDNN_WRAP)
+#endif
 }  // namespace dynload
 }  // namespace platform
 }  // namespace paddle

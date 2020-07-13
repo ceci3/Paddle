@@ -36,6 +36,40 @@ class TestFakeQuantizeOp(OpTest):
         self.check_output()
 
 
+class TestFakeQuantizeOp1(OpTest):
+    def setUp(self):
+        self.op_type = "fake_quantize_abs_max"
+        self.attrs = {'bit_length': 8}
+        self.inputs = {'X': np.zeros((10, 10)).astype("float32"), }
+        scale = np.max(np.abs(self.inputs['X'])).astype("float32")
+        inv_scale = 1.0 / (scale + 1e-6) if scale < 1e-30 else 1.0 / scale
+        self.outputs = {
+            'Out': np.round(self.inputs['X'] * inv_scale * (
+                (1 << (self.attrs['bit_length'] - 1)) - 1)),
+            'OutScale': np.array(scale).astype("float32"),
+        }
+
+    def test_check_output(self):
+        self.check_output()
+
+
+class TestFakeQuantizeOp2(OpTest):
+    def setUp(self):
+        self.op_type = "fake_quantize_abs_max"
+        self.attrs = {'bit_length': 8}
+        self.inputs = {'X': np.full((10, 10), 1e-40).astype("float32"), }
+        scale = np.max(np.abs(self.inputs['X'])).astype("float32")
+        inv_scale = 1.0 / (scale + 1e-6) if scale < 1e-30 else 1.0 / scale
+        self.outputs = {
+            'Out': np.round(self.inputs['X'] * inv_scale * (
+                (1 << (self.attrs['bit_length'] - 1)) - 1)),
+            'OutScale': np.array(scale).astype("float32"),
+        }
+
+    def test_check_output(self):
+        self.check_output()
+
+
 class TestFakeChannelWiseQuantizeOp(OpTest):
     def setUp(self):
         self.op_type = "fake_channel_wise_quantize_abs_max"
@@ -132,10 +166,9 @@ class TestFakeQuantizeRangeAbsMaxOp2(OpTest):
         }
         x = (np.random.random((8, 16, 7, 7)) - 0.5) * 10
         x = x.astype("float32")
-        scale = np.max(np.abs(x)).astype("float32") - 1.0
+        scale = np.array([np.max(np.abs(x)).astype("float32") - 1.0])
         out_scales = np.zeros(self.attrs['window_size']).astype("float32")
         out_scales[0] = scale
-
         self.inputs = {
             'X': x,
             'Iter': np.zeros(1).astype("int64"),
@@ -208,6 +241,36 @@ class TestFakeQuantDequantMovingOp(TestMovingOpBase):
         range_v = (1 << (self.attrs['bit_length'] - 1)) - 1
         return np.round(self.inputs['X'] / out_scale *
                         range_v) * out_scale / range_v
+
+    def test_check_grad(self):
+        x = self.inputs["X"]
+        gradient = [np.ones(x.shape) / np.product(x.shape)]
+        self.check_grad(["X"], "Out", user_defined_grads=gradient)
+
+
+class TestFakeQuantDequantAbsOp(OpTest):
+    def setUp(self):
+        self.op_type = "fake_quantize_dequantize_abs_max"
+        self.attrs = {'bit_length': 8}
+        self.inputs = {'X': np.random.random((124, 240)).astype("float32"), }
+        scale = np.max(np.abs(self.inputs['X'])).astype("float32")
+        out_data = self.calc_output(scale)
+        self.outputs = {
+            'Out': out_data,
+            'OutScale': np.array(scale).astype("float32"),
+        }
+
+    def calc_output(self, scale):
+        range_v = (1 << (self.attrs['bit_length'] - 1)) - 1
+        return np.round(self.inputs['X'] / scale * range_v) * scale / range_v
+
+    def test_check_output(self):
+        self.check_output()
+
+    def test_check_grad(self):
+        x = self.inputs["X"]
+        gradient = [np.ones(x.shape) / np.product(x.shape)]
+        self.check_grad(["X"], "Out", user_defined_grads=gradient)
 
 
 if __name__ == "__main__":

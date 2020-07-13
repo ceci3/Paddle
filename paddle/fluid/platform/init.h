@@ -20,17 +20,23 @@ limitations under the License. */
 #include "glog/logging.h"
 
 namespace paddle {
+namespace platform {
+
+void ParseCommandLineFlags(int argc, char **argv, bool remove);
+
+}  // namespace platform
+}  // namespace paddle
+
+namespace paddle {
 namespace framework {
 
-void InitGflags(std::vector<std::string> argv);
+bool InitGflags(std::vector<std::string> argv);
 
 void InitGLOG(const std::string &prog_name);
 
 void InitDevices(bool init_p2p);
 
 void InitDevices(bool init_p2p, const std::vector<int> devices);
-
-void InitDGC();
 
 #ifndef _WIN32
 void SignalHandle(const char *data, int size);

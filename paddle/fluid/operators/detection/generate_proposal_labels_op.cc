@@ -38,42 +38,64 @@ class GenerateProposalLabelsOp : public framework::OperatorWithKernel {
   using framework::OperatorWithKernel::OperatorWithKernel;
 
   void InferShape(framework::InferShapeContext* ctx) const override {
-    PADDLE_ENFORCE(ctx->HasInput("RpnRois"),
-                   "Input(RpnRois) shouldn't be null.");
-    PADDLE_ENFORCE(ctx->HasInput("GtClasses"),
-                   "Input(GtClasses) shouldn't be null.");
-    PADDLE_ENFORCE(ctx->HasInput("IsCrowd"),
-                   "Input(IsCrowd) shouldn't be null.");
-    PADDLE_ENFORCE(ctx->HasInput("GtBoxes"),
-                   "Input(GtBoxes) shouldn't be null.");
-    PADDLE_ENFORCE(ctx->HasInput("ImInfo"), "Input(ImInfo) shouldn't be null.");
+    PADDLE_ENFORCE_EQ(
+        ctx->HasInput("RpnRois"), true,
+        platform::errors::NotFound("Input(RpnRois) shouldn't be null."));
+    PADDLE_ENFORCE_EQ(
+        ctx->HasInput("GtClasses"), true,
+        platform::errors::NotFound("Input(GtClasses) shouldn't be null."));
+    PADDLE_ENFORCE_EQ(
+        ctx->HasInput("IsCrowd"), true,
+        platform::errors::NotFound("Input(IsCrowd) shouldn't be null."));
+    PADDLE_ENFORCE_EQ(
+        ctx->HasInput("GtBoxes"), true,
+        platform::errors::NotFound("Input(GtBoxes) shouldn't be null."));
+    PADDLE_ENFORCE_EQ(
+        ctx->HasInput("ImInfo"), true,
+        platform::errors::NotFound("Input(ImInfo) shouldn't be null."));
 
-    PADDLE_ENFORCE(
-        ctx->HasOutput("Rois"),
-        "Output(Rois) of GenerateProposalLabelsOp should not be null");
-    PADDLE_ENFORCE(
-        ctx->HasOutput("LabelsInt32"),
-        "Output(LabelsInt32) of GenerateProposalLabelsOp should not be null");
-    PADDLE_ENFORCE(
-        ctx->HasOutput("BboxTargets"),
-        "Output(BboxTargets) of GenerateProposalLabelsOp should not be null");
-    PADDLE_ENFORCE(ctx->HasOutput("BboxInsideWeights"),
-                   "Output(BboxInsideWeights) of GenerateProposalLabelsOp "
-                   "should not be null");
-    PADDLE_ENFORCE(ctx->HasOutput("BboxOutsideWeights"),
-                   "Output(BboxOutsideWeights) of GenerateProposalLabelsOp "
-                   "should not be null");
+    PADDLE_ENFORCE_EQ(
+        ctx->HasOutput("Rois"), true,
+        platform::errors::NotFound(
+            "Output(Rois) of GenerateProposalLabelsOp should not be null"));
+    PADDLE_ENFORCE_EQ(ctx->HasOutput("LabelsInt32"), true,
+                      platform::errors::NotFound("Output(LabelsInt32) of "
+                                                 "GenerateProposalLabelsOp "
+                                                 "should not be null"));
+    PADDLE_ENFORCE_EQ(ctx->HasOutput("BboxTargets"), true,
+                      platform::errors::NotFound("Output(BboxTargets) of "
+                                                 "GenerateProposalLabelsOp "
+                                                 "should not be null"));
+    PADDLE_ENFORCE_EQ(
+        ctx->HasOutput("BboxInsideWeights"), true,
+        platform::errors::NotFound(
+            "Output(BboxInsideWeights) of GenerateProposalLabelsOp "
+            "should not be null"));
+    PADDLE_ENFORCE_EQ(
+        ctx->HasOutput("BboxOutsideWeights"), true,
+        platform::errors::NotFound(
+            "Output(BboxOutsideWeights) of GenerateProposalLabelsOp "
+            "should not be null"));
 
     auto rpn_rois_dims = ctx->GetInputDim("RpnRois");
     auto gt_boxes_dims = ctx->GetInputDim("GtBoxes");
     auto im_info_dims = ctx->GetInputDim("ImInfo");
 
     PADDLE_ENFORCE_EQ(rpn_rois_dims.size(), 2,
-                      "The rank of Input(RpnRois) must be 2.");
+                      platform::errors::InvalidArgument(
+                          "The dimensions size of Input(RpnRois) must be 2. "
+                          "But received dimensions size=[%d], dimensions=[%s].",
+                          rpn_rois_dims.size(), rpn_rois_dims));
     PADDLE_ENFORCE_EQ(gt_boxes_dims.size(), 2,
-                      "The rank of Input(GtBoxes) must be 2.");
+                      platform::errors::InvalidArgument(
+                          "The dimensions size of Input(GtBoxes) must be 2. "
+                          "But received dimensions size=[%d], dimensions=[%s].",
+                          gt_boxes_dims.size(), gt_boxes_dims));
     PADDLE_ENFORCE_EQ(im_info_dims.size(), 2,
-                      "The rank of Input(ImInfo) must be 2.");
+                      platform::errors::InvalidArgument(
+                          "The dimensions size of Input(ImInfo) must be 2. But "
+                          "received dimensions size=[%d], dimensions=[%s].",
+                          im_info_dims.size(), im_info_dims));
 
     int class_nums = ctx->Attrs().Get<int>("class_nums");
 
@@ -87,7 +109,7 @@ class GenerateProposalLabelsOp : public framework::OperatorWithKernel {
  protected:
   framework::OpKernelType GetExpectedKernelType(
       const framework::ExecutionContext& ctx) const override {
-    auto data_type = framework::GetDataTypeOfVar(ctx.InputVar("RpnRois"));
+    auto data_type = OperatorWithKernel::IndicateVarDataType(ctx, "RpnRois");
     return framework::OpKernelType(data_type, platform::CPUPlace());
   }
 };
@@ -124,6 +146,7 @@ std::vector<std::vector<int>> SampleFgBgGt(
   // Follow the Faster RCNN's implementation
   for (int64_t i = 0; i < row; ++i) {
     const T* v = proposal_to_gt_overlaps + i * col;
+
     T max_overlap = *std::max_element(v, v + col);
     if ((i < gt_num) && (crowd_data[i])) {
       max_overlap = -1.0;
@@ -254,38 +277,40 @@ std::vector<Tensor> SampleRoisForOneImage(
     bool is_cls_agnostic) {
   // 1.1 map to original image
   auto im_scale = im_info.data<T>()[2];
-  Tensor rpn_rois_slice;
-  Tensor rpn_rois;
 
-  if (is_cascade_rcnn) {
-    // slice rpn_rois from gt_box_num refer to detectron
-    rpn_rois_slice =
-        rpn_rois_in.Slice(gt_boxes.dims()[0], rpn_rois_in.dims()[0]);
-    rpn_rois.mutable_data<T>(rpn_rois_slice.dims(), context.GetPlace());
-    const T* rpn_rois_in_dt = rpn_rois_slice.data<T>();
-    T* rpn_rois_dt = rpn_rois.data<T>();
-    for (int i = 0; i < rpn_rois.numel(); ++i) {
-      rpn_rois_dt[i] = rpn_rois_in_dt[i] / im_scale;
-    }
-  } else {
-    rpn_rois.mutable_data<T>(rpn_rois_in.dims(), context.GetPlace());
-    const T* rpn_rois_in_dt = rpn_rois_in.data<T>();
-    T* rpn_rois_dt = rpn_rois.data<T>();
-    for (int i = 0; i < rpn_rois.numel(); ++i) {
+  Tensor rpn_rois;
+  rpn_rois.mutable_data<T>(rpn_rois_in.dims(), context.GetPlace());
+  const T* rpn_rois_in_dt = rpn_rois_in.data<T>();
+  T* rpn_rois_dt = rpn_rois.data<T>();
+  int gt_num = gt_boxes.dims()[0] * 4;
+  for (int i = 0; i < rpn_rois.numel(); ++i) {
+    if (i < gt_num && is_cascade_rcnn) {
+      rpn_rois_dt[i] = rpn_rois_in_dt[i];
+    } else {
       rpn_rois_dt[i] = rpn_rois_in_dt[i] / im_scale;
     }
   }
 
   // 1.2 compute overlaps
-  int proposals_num = gt_boxes.dims()[0] + rpn_rois.dims()[0];
-  Tensor boxes;
-  boxes.mutable_data<T>({proposals_num, kBoxDim}, context.GetPlace());
-  Concat<T>(context, gt_boxes, rpn_rois, &boxes);
+  int proposals_num = rpn_rois.dims()[0];
+  if (!is_cascade_rcnn) {
+    proposals_num += gt_boxes.dims()[0];
+  }
   Tensor proposal_to_gt_overlaps;
   proposal_to_gt_overlaps.mutable_data<T>({proposals_num, gt_boxes.dims()[0]},
                                           context.GetPlace());
-  BboxOverlaps<T>(boxes, gt_boxes, &proposal_to_gt_overlaps);
 
+  Tensor boxes;
+  boxes.mutable_data<T>({proposals_num, kBoxDim}, context.GetPlace());
+  if (!is_cascade_rcnn) {
+    Concat<T>(context, gt_boxes, rpn_rois, &boxes);
+  } else {
+    T* boxes_dt = boxes.data<T>();
+    for (int i = 0; i < boxes.numel(); ++i) {
+      boxes_dt[i] = rpn_rois_dt[i];
+    }
+  }
+  BboxOverlaps<T>(boxes, gt_boxes, &proposal_to_gt_overlaps);
   // Generate proposal index
   std::vector<std::vector<int>> fg_bg_gt =
       SampleFgBgGt<T>(context, &proposal_to_gt_overlaps, is_crowd,
@@ -396,15 +421,30 @@ class GenerateProposalLabelsKernel : public framework::OpKernel<T> {
     bool use_random = context.Attr<bool>("use_random");
     bool is_cascade_rcnn = context.Attr<bool>("is_cascade_rcnn");
     bool is_cls_agnostic = context.Attr<bool>("is_cls_agnostic");
-    PADDLE_ENFORCE_EQ(rpn_rois->lod().size(), 1UL,
-                      "GenerateProposalLabelsOp rpn_rois needs 1 level of LoD");
+    PADDLE_ENFORCE_EQ(
+        rpn_rois->lod().size(), 1UL,
+        platform::errors::InvalidArgument(
+            "GenerateProposalLabelsOp rpn_rois needs 1 level of LoD. But "
+            "received level of LoD is [%d], LoD is [%s].",
+            rpn_rois->lod().size(), rpn_rois->lod()));
     PADDLE_ENFORCE_EQ(
         gt_classes->lod().size(), 1UL,
-        "GenerateProposalLabelsOp gt_classes needs 1 level of LoD");
-    PADDLE_ENFORCE_EQ(is_crowd->lod().size(), 1UL,
-                      "GenerateProposalLabelsOp is_crowd needs 1 level of LoD");
-    PADDLE_ENFORCE_EQ(gt_boxes->lod().size(), 1UL,
-                      "GenerateProposalLabelsOp gt_boxes needs 1 level of LoD");
+        platform::errors::InvalidArgument(
+            "GenerateProposalLabelsOp gt_classes needs 1 level of LoD. But "
+            "received level of LoD is [%d], LoD is [%s].",
+            gt_classes->lod().size(), gt_classes->lod()));
+    PADDLE_ENFORCE_EQ(
+        is_crowd->lod().size(), 1UL,
+        platform::errors::InvalidArgument(
+            "GenerateProposalLabelsOp is_crowd needs 1 level of LoD. But "
+            "received level of LoD is [%d], LoD is [%s].",
+            is_crowd->lod().size(), is_crowd->lod()));
+    PADDLE_ENFORCE_EQ(
+        gt_boxes->lod().size(), 1UL,
+        platform::errors::InvalidArgument(
+            "GenerateProposalLabelsOp gt_boxes needs 1 level of LoD. But "
+            "received level of LoD is [%d], LoD is [%s].",
+            gt_boxes->lod().size(), gt_boxes->lod()));
     int64_t n = static_cast<int64_t>(rpn_rois->lod().back().size() - 1);
 
     rois->mutable_data<T>({n * batch_size_per_im, kBoxDim}, context.GetPlace());
@@ -518,11 +558,11 @@ class GenerateProposalLabelsOpMaker : public framework::OpProtoAndCheckerMaker {
         "each element is a bounding box with [xmin, ymin, xmax, ymax] format.");
     AddOutput("LabelsInt32",
               "(LoDTensor), This output is a 2D LoDTensor with shape [P, 1], "
-              "each element repersents a class label of a roi");
+              "each element represents a class label of a roi");
     AddOutput("BboxTargets",
               "(LoDTensor), This output is a 2D LoDTensor with shape [P, 4 * "
               "class_nums], "
-              "each element repersents a box label of a roi");
+              "each element represents a box label of a roi");
     AddOutput(
         "BboxInsideWeights",
         "(LoDTensor), This output is a 2D LoDTensor with shape [P, 4 * "
@@ -583,9 +623,11 @@ Finally BboxInsideWeights and BboxOutsideWeights are used to specify whether it 
 }  // namespace paddle
 
 namespace ops = paddle::operators;
-REGISTER_OPERATOR(generate_proposal_labels, ops::GenerateProposalLabelsOp,
-                  ops::GenerateProposalLabelsOpMaker,
-                  paddle::framework::EmptyGradOpMaker);
+REGISTER_OPERATOR(
+    generate_proposal_labels, ops::GenerateProposalLabelsOp,
+    ops::GenerateProposalLabelsOpMaker,
+    paddle::framework::EmptyGradOpMaker<paddle::framework::OpDesc>,
+    paddle::framework::EmptyGradOpMaker<paddle::imperative::OpBase>);
 REGISTER_OP_CPU_KERNEL(generate_proposal_labels,
                        ops::GenerateProposalLabelsKernel<float>,
                        ops::GenerateProposalLabelsKernel<double>);
