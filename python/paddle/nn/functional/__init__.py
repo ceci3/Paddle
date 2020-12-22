@@ -169,6 +169,7 @@ from .vision import deformable_roi_pooling  #DEFINE_ALIAS
 from .vision import density_prior_box  #DEFINE_ALIAS
 from .vision import detection_output  #DEFINE_ALIAS
 from .vision import distribute_fpn_proposals  #DEFINE_ALIAS
+from .vision import generate_proposal_labels_and_attributes  #DEFINE_ALIAS
 from .vision import fsp_matrix  #DEFINE_ALIAS
 from .vision import generate_mask_labels  #DEFINE_ALIAS
 from .vision import generate_proposal_labels  #DEFINE_ALIAS

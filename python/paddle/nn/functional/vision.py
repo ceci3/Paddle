@@ -25,6 +25,7 @@ from ...fluid.layers import deformable_roi_pooling  #DEFINE_ALIAS
 from ...fluid.layers import density_prior_box  #DEFINE_ALIAS
 from ...fluid.layers import detection_output  #DEFINE_ALIAS
 from ...fluid.layers import distribute_fpn_proposals  #DEFINE_ALIAS
+from ...fluid.layers import generate_proposal_labels_and_attributes  #DEFINE_ALIAS
 from ...fluid.layers import generate_mask_labels  #DEFINE_ALIAS
 from ...fluid.layers import generate_proposal_labels  #DEFINE_ALIAS
 from ...fluid.layers import generate_proposals  #DEFINE_ALIAS
@@ -64,6 +65,7 @@ __all__ = [
     'density_prior_box',
     'detection_output',
     'distribute_fpn_proposals',
+    'generate_proposal_labels_and_attributes_op',
     'fsp_matrix',
     'generate_mask_labels',
     'generate_proposal_labels',

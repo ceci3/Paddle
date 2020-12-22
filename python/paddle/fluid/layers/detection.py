@@ -45,6 +45,7 @@ __all__ = [
     'retinanet_target_assign',
     'sigmoid_focal_loss',
     'anchor_generator',
+    'generate_proposal_labels_and_attributes',
     'roi_perspective_transform',
     'generate_proposal_labels',
     'generate_proposals',
@@ -2732,6 +2733,108 @@ def generate_proposal_labels(rpn_rois,
     bbox_outside_weights.stop_gradient = True
 
     return rois, labels_int32, bbox_targets, bbox_inside_weights, bbox_outside_weights
+
+
+def generate_proposal_labels_and_attributes(
+        rpn_rois,
+        gt_classes,
+        is_crowd,
+        gt_boxes,
+        im_info,
+        gt_attr_lbls,
+        gt_attr_lblwgts,
+        gt_attr_tgts,
+        gt_attr_tgtwgts,
+        batch_size_per_im=256,
+        fg_fraction=0.25,
+        fg_thresh=0.25,
+        bg_thresh_hi=0.5,
+        bg_thresh_lo=0.0,
+        bbox_reg_weights=[0.1, 0.1, 0.2, 0.2],
+        class_nums=None,
+        attr_lbl_nums=None,
+        attr_tgt_nums=None,
+        use_random=True,
+        is_cls_agnostic=False,
+        is_cascade_rcnn=False):
+
+    helper = LayerHelper('generate_proposal_labels_and_attributes', **locals())
+
+    check_variable_and_dtype(rpn_rois, 'rpn_rois', ['float32', 'float64'],
+                             'generate_proposal_labels_and_attributes')
+    check_variable_and_dtype(gt_classes, 'gt_classes', ['int32'],
+                             'generate_proposal_labels_and_attributes')
+    check_variable_and_dtype(is_crowd, 'is_crowd', ['int32'],
+                             'generate_proposal_labels_and_attributes')
+
+    rois = helper.create_variable_for_type_inference(dtype=rpn_rois.dtype)
+    labels_int32 = helper.create_variable_for_type_inference(
+        dtype=gt_classes.dtype)
+    bbox_targets = helper.create_variable_for_type_inference(
+        dtype=rpn_rois.dtype)
+    bbox_inside_weights = helper.create_variable_for_type_inference(
+        dtype=rpn_rois.dtype)
+    bbox_outside_weights = helper.create_variable_for_type_inference(
+        dtype=rpn_rois.dtype)
+    attr_lbls = helper.create_variable_for_type_inference(
+        dtype=gt_attr_lbls.dtype)
+    attr_lblwgts = helper.create_variable_for_type_inference(
+        dtype=gt_attr_lblwgts.dtype)
+    attr_tgts = helper.create_variable_for_type_inference(
+        dtype=gt_attr_tgts.dtype)
+    attr_tgtwgts = helper.create_variable_for_type_inference(
+        dtype=gt_attr_tgtwgts.dtype)
+
+    helper.append_op(
+        type="generate_proposal_labels_and_attributes",
+        inputs={
+            'RpnRois': rpn_rois,
+            'GtClasses': gt_classes,
+            'IsCrowd': is_crowd,
+            'GtBoxes': gt_boxes,
+            'ImInfo': im_info,
+            'GtAttrLbls': gt_attr_lbls,
+            'GtAttrLblWgts': gt_attr_lblwgts,
+            'GtAttrTgts': gt_attr_tgts,
+            'GtAttrTgtWgts': gt_attr_tgtwgts,
+        },
+        outputs={
+            'Rois': rois,
+            'LabelsInt32': labels_int32,
+            'BboxTargets': bbox_targets,
+            'BboxInsideWeights': bbox_inside_weights,
+            'BboxOutsideWeights': bbox_outside_weights,
+            'AttributeLabels': attr_lbls,
+            'AttributeLabelWeights': attr_lblwgts,
+            'AttributeTargets': attr_tgts,
+            'AttributeTargetWeights': attr_tgtwgts
+        },
+        attrs={
+            'batch_size_per_im': batch_size_per_im,
+            'fg_fraction': fg_fraction,
+            'fg_thresh': fg_thresh,
+            'bg_thresh_hi': bg_thresh_hi,
+            'bg_thresh_lo': bg_thresh_lo,
+            'bbox_reg_weights': bbox_reg_weights,
+            'class_nums': class_nums,
+            'attr_lbl_nums': attr_lbl_nums,
+            'attr_tgt_nums': attr_tgt_nums,
+            'use_random': use_random,
+            'is_cls_agnostic': is_cls_agnostic,
+            'is_cascade_rcnn': is_cascade_rcnn
+        })
+
+    rois.stop_gradient = True
+    labels_int32.stop_gradient = True
+    bbox_targets.stop_gradient = True
+    bbox_inside_weights.stop_gradient = True
+    bbox_outside_weights.stop_gradient = True
+    attr_lbls.stop_gradient = True
+    attr_lblwgts.stop_gradient = True
+    attr_tgts.stop_gradient = True
+    attr_tgtwgts.stop_gradient = True
+
+    return rois, labels_int32, bbox_targets, bbox_inside_weights, bbox_outside_weights, attr_lbls, attr_lblwgts, attr_tgts, attr_tgtwgts
 
 
 def generate_mask_labels(im_info, gt_classes, is_crowd, gt_segms, rois,

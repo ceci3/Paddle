@@ -280,7 +280,7 @@ class QuantizationTransformPass(object):
         self._exe = executor
         quant_type = [
             'abs_max', 'channel_wise_abs_max', 'range_abs_max',
-            'moving_average_abs_max'
+            'moving_average_abs_max', 'his_quant'
         ]
         assert activation_quantize_type != 'channel_wise_abs_max', \
             "The activation quantization type does not support 'channel_wise_abs_max'."
@@ -410,6 +410,10 @@ class QuantizationTransformPass(object):
                             dequant_var_node = self._insert_dequant_op(
                                 graph, quant_var_node, scale_var_node,
                                 quant_bits)
+                    elif quant_type == 'his_quant':
+                        quant_var_node = self._insert_quant_op(
+                            graph, var_node, name, quant_bits, 'his_quant')
+                        dequant_var_node = quant_var_node
                     else:
                         quant_var_node, scale_var_node = self._insert_quant_op(
                             graph, var_node, name, quant_bits, quant_type)
@@ -496,6 +500,8 @@ class QuantizationTransformPass(object):
         elif quant_type == 'moving_average_abs_max':
             return self._insert_quant_moving_average_abs_max_op(
                 graph, var_node, name, quant_bits)
+        elif quant_type == 'his_quant':
+            return self._insert_his_quant_op(graph, var_node, name, quant_bits)
 
     def _insert_quant_abs_max_op(self, graph, var_node, name, quant_bits):
         """
@@ -526,6 +532,29 @@ class QuantizationTransformPass(object):
         graph.link_to(quant_op_node, quant_var_node)
         graph.link_to(quant_op_node, scale_var_node)
         return quant_var_node, scale_var_node
+
+    def _insert_his_quant_op(self, graph, var_node, name, quant_bits):
+        """
+        Insert his_quantize op in the graph.
+        """
+        assert var_node.is_var(), '{} is not a var'.format(var_node.name())
+
+        quant_var_node = graph.create_var_node(
+            name=self._quantized_var_name(name),
+            var_type=var_node.type(),
+            shape=var_node.shape(),
+            var_dtype=var_node.dtype())
+        quant_op_node = graph.create_op_node(
+            op_type='his_quantdequant',
+            attrs={
+                'bit_length': quant_bits,
+                'op_role': core.op_proto_and_checker_maker.OpRole.Forward
+            },
+            inputs={'X': var_node},
+            outputs={'Out': quant_var_node})
+        graph.link_to(var_node, quant_op_node)
+        graph.link_to(quant_op_node, quant_var_node)
+        return quant_var_node
 
     def _insert_quant_range_abs_max_op(self, graph, var_node, name, quant_bits):
         """
@@ -1442,6 +1471,11 @@ class OutScaleForTrainingPass(object):
         for op in target_ops:
             for output_var_name in _get_op_output_var_names(op):
                 in_node = graph._find_node_by_name(op.outputs, output_var_name)
+
+                if in_node.dtype() not in \
+                    [core.VarDesc.VarType.FP64, core.VarDesc.VarType.FP32]:
+                    continue
+
                 out_node = graph.create_var_node_from_desc(in_node.var())
                 scale_node = graph.create_persistable_node(
                     name=self._scale_name(in_node.name()),
@@ -1546,17 +1580,26 @@ class OutScaleForInferencePass(object):
             if op_node.name() in self._teller_set:
                 var_names = _get_op_output_var_names(op_node)
                 for var_name in var_names:
-                    # For compatibility, we save output threshold by two methods.
+                    in_node = graph._find_node_by_name(op_node.outputs,
+                                                       var_name)
+                    if in_node.dtype() not in \
+                        [core.VarDesc.VarType.FP64, core.VarDesc.VarType.FP32]:
+                        continue
+
                     scale_name = self._scale_name(var_name)
-                    scale_v = np.array(
-                        self._scope.find_var(scale_name).get_tensor())[0]
-                    op_node.op()._set_attr("out_threshold", float(scale_v))
+                    scale_var = self._scope.find_var(scale_name)
+                    assert scale_var is not None, \
+                        "Can not find {} variable in the scope".format(scale_name)
+                    scale_value = np.array(scale_var.get_tensor())[0]
+
+                    # For compatibility, we save output threshold by two methods.
+                    op_node.op()._set_attr("out_threshold", float(scale_value))
 
                     argname_index = _get_output_name_index(op_node, var_name)
                     assert argname_index is not None, \
                         var_name + " is not the output of the op"
                     op_node.op()._set_attr(argname_index[0] + str(argname_index[1]) \
-                        + "_threshold", float(scale_v))
+                        + "_threshold", float(scale_value))
         graph.resolve_hazard()
         return graph
 
